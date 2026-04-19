@@ -1,0 +1,3 @@
+[submodule "vendor/bin-to-wheel"]
+	path = vendor/bin-to-wheel
+	url = https://github.com/DataZooDE/bin-to-wheel.git
