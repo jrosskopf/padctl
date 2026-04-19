@@ -1,0 +1,30 @@
+[package]
+name = "padctl"
+version = "0.1.0"
+edition = "2021"
+description = "Cypherpunk TUI controller for Kingfisher Z1 / KingSmith WalkingPad via BLE"
+
+[[bin]]
+name = "padctl"
+path = "src/main.rs"
+
+[dependencies]
+btleplug   = "0.11"
+ratatui    = "0.29"
+crossterm  = "0.28"
+tokio      = { version = "1", features = ["full"] }
+clap       = { version = "4", features = ["derive"] }
+thiserror  = "1"
+async-trait = "0.1"
+uuid       = { version = "1", features = ["v4"] }
+log        = "0.4"
+futures    = "0.3"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml       = "0.8"
+reqwest    = { version = "0.12", features = ["json"] }
+open       = "5"
+
+[dev-dependencies]
+mockall    = "0.13"
+tokio-test = "0.4"
