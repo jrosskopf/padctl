@@ -3,6 +3,12 @@ name = "padctl"
 version = "0.1.0"
 edition = "2021"
 description = "Cypherpunk TUI controller for Kingfisher Z1 / KingSmith WalkingPad via BLE"
+license = "MIT"
+repository = "https://github.com/jrosskopf/padctl"
+homepage = "https://github.com/jrosskopf/padctl"
+readme = "README.md"
+keywords = ["ble", "treadmill", "tui", "walkingpad"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "padctl"

@@ -55,7 +55,7 @@ sudo usermod -aG bluetooth $USER
 Requires Rust 1.70+.
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/jrosskopf/padctl
 cd padctl
 cargo build --release
 ./target/release/padctl
