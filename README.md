@@ -39,9 +39,25 @@ should work. The Kingfisher Z1 also exposes proprietary KingSmith characteristic
 
 ## Install
 
-### Prerequisites
+### Quickstart (no install required)
 
-**Linux** — BlueZ and group membership:
+```bash
+uvx padctl
+```
+
+Requires [uv](https://docs.astral.sh/uv/). Works on macOS and Linux out of the box.
+
+### pip
+
+```bash
+pip install padctl
+padctl
+```
+
+### Prerequisites for Linux
+
+BlueZ and group membership are required for BLE access:
+
 ```bash
 sudo apt install bluez
 sudo usermod -aG bluetooth $USER
