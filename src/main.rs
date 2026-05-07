@@ -770,6 +770,15 @@ async fn ble_session_task(
     let mut poll_tick = time::interval(Duration::from_secs(1));
     poll_tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
+    // The device silently drops the BLE connection after ~15 min if no FTMS
+    // Control Point command arrives.  Re-sending RequestControl every 5 min
+    // keeps the control session alive without changing any belt state.
+    let mut keepalive_tick = time::interval_at(
+        time::Instant::now() + Duration::from_secs(300),
+        Duration::from_secs(300),
+    );
+    keepalive_tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+
     // Handle commands from the TUI — FTMS encoding
     info!("ble_session_task: entering command loop");
     loop {
@@ -777,6 +786,13 @@ async fn ble_session_task(
             _ = poll_tick.tick() => {
                 if let Err(e) = driver.poll_proprietary_stats().await {
                     debug!("ble_session_task: poll_proprietary_stats error: {e}");
+                }
+                continue;
+            }
+            _ = keepalive_tick.tick() => {
+                info!("ble_session_task: FTMS keep-alive — RequestControl [0x00]");
+                if let Err(e) = driver.write_command(&[0x00]).await {
+                    debug!("ble_session_task: keep-alive error: {e}");
                 }
                 continue;
             }
