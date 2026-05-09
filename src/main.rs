@@ -781,18 +781,30 @@ async fn ble_session_task(
 
     // Handle commands from the TUI — FTMS encoding
     info!("ble_session_task: entering command loop");
+    let mut consecutive_poll_failures: u32 = 0;
     loop {
         let cmd = tokio::select! {
             _ = poll_tick.tick() => {
-                if let Err(e) = driver.poll_proprietary_stats().await {
-                    debug!("ble_session_task: poll_proprietary_stats error: {e}");
+                match driver.poll_proprietary_stats().await {
+                    Ok(()) => { consecutive_poll_failures = 0; }
+                    Err(e) => {
+                        consecutive_poll_failures += 1;
+                        debug!("ble_session_task: poll_proprietary_stats error: {e}");
+                        if consecutive_poll_failures >= 3 {
+                            warn!("ble_session_task: {} consecutive poll failures — device disconnected", consecutive_poll_failures);
+                            let _ = evt_tx.send(BleEvent::Disconnected).await;
+                            break;
+                        }
+                    }
                 }
                 continue;
             }
             _ = keepalive_tick.tick() => {
                 info!("ble_session_task: FTMS keep-alive — RequestControl [0x00]");
                 if let Err(e) = driver.write_command(&[0x00]).await {
-                    debug!("ble_session_task: keep-alive error: {e}");
+                    warn!("ble_session_task: keep-alive write failed — device disconnected: {e}");
+                    let _ = evt_tx.send(BleEvent::Disconnected).await;
+                    break;
                 }
                 continue;
             }

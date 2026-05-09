@@ -34,3 +34,6 @@ open       = "5"
 [dev-dependencies]
 mockall    = "0.13"
 tokio-test = "0.4"
+
+[patch.crates-io]
+bluez-async = { path = "patches/bluez-async" }

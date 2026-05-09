@@ -1,13 +1,13 @@
 use log::{Level, LevelFilter, Log, Metadata, Record};
-use std::io::{self, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::sync::Mutex;
 
-/// Stderr logger — writes to fd 2, which is separate from the TUI's stdout/alternate-screen.
-///
-/// Usage: run with `--debug` and redirect stderr:
-///   padctl --debug 2>padctl-debug.log
-struct StderrLogger;
+struct FileLogger {
+    writer: Mutex<BufWriter<File>>,
+}
 
-impl Log for StderrLogger {
+impl Log for FileLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= Level::Debug
     }
@@ -16,27 +16,37 @@ impl Log for StderrLogger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        let stderr = io::stderr();
-        let mut h = stderr.lock();
-        let _ = writeln!(
-            h,
-            "[{level:<5} {target}] {args}",
-            level  = record.level(),
-            target = record.target(),
-            args   = record.args(),
-        );
-        let _ = h.flush();
+        if let Ok(mut w) = self.writer.lock() {
+            let _ = writeln!(
+                w,
+                "[{level:<5} {target}] {args}",
+                level  = record.level(),
+                target = record.target(),
+                args   = record.args(),
+            );
+            let _ = w.flush();
+        }
     }
 
     fn flush(&self) {
-        let _ = io::stderr().lock().flush();
+        if let Ok(mut w) = self.writer.lock() {
+            let _ = w.flush();
+        }
     }
 }
 
-/// Initialise stderr logging.  Call before entering raw-mode / alternate screen.
-/// Capture with:  padctl --debug 2>padctl-debug.log
+/// Initialise file-based logging. Writes to `padctl-debug.log` in the current directory.
 pub fn init() -> std::io::Result<()> {
-    log::set_logger(&StderrLogger)
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("padctl-debug.log")?;
+
+    let logger = Box::leak(Box::new(FileLogger {
+        writer: Mutex::new(BufWriter::new(file)),
+    }));
+
+    log::set_logger(logger)
         .map(|()| log::set_max_level(LevelFilter::Debug))
         .map_err(|e| std::io::Error::other(e.to_string()))
 }
