@@ -455,17 +455,19 @@ fn draw_session(f: &mut Frame, state: &AppState) {
     .alignment(Alignment::Left);
     f.render_widget(hdr, root[0]);
 
-    // Disc + stats side by side (both 24 rows tall)
+    // Disc + stats + clock side by side (all 24 rows tall)
     let disc_row = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(44), // disc (44w × 24h ≈ 336×352 px — physically square)
             Constraint::Min(30),    // stats grid
+            Constraint::Length(44), // clock (mirrors disc on the right)
         ])
         .split(root[1]);
 
     draw_disc(f, state, disc_row[0]);
     draw_stats(f, state, disc_row[1]);
+    draw_clock(f, state, disc_row[2]);
 
     draw_gauge(f, state, root[2]);
     draw_log(f, state, root[3]);
@@ -714,6 +716,94 @@ fn render_stat_row(f: &mut Frame, area: Rect, cells: &[(&str, String, Color); 3]
         )
         .alignment(Alignment::Center);
         f.render_widget(p, cols[i]);
+    }
+}
+
+// ─── Clock widget (7-segment LCD style) ──────────────────────────────────────
+
+fn draw_clock(f: &mut Frame, state: &AppState, area: Rect) {
+    let now = chrono::Local::now();
+    let time_str = now.format("%H:%M:%S").to_string();
+
+    // Derive the session start time from the treadmill's elapsed-seconds counter
+    // rather than `session_start_at` — the latter gets set on first observation of
+    // the running belt and is wrong after a reconnect mid-session.
+    let started_str = if state.stats.active_seconds > 0 {
+        (now - chrono::Duration::seconds(state.stats.active_seconds as i64))
+            .format("%H:%M:%S")
+            .to_string()
+    } else {
+        "—".to_string()
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .border_style(Style::default().fg(C_DIM))
+        .style(Style::default().bg(C_BG))
+        .title(Span::styled(" CLOCK ", Style::default().fg(C_DIM)));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // top pad
+            Constraint::Length(5), // big digits
+            Constraint::Length(1), // spacer
+            Constraint::Length(1), // STARTED line
+            Constraint::Min(0),    // bottom pad
+        ])
+        .split(inner);
+
+    let big = Paragraph::new(big_digit_lines(&time_str, C_PRIMARY))
+        .alignment(Alignment::Center);
+    f.render_widget(big, rows[1]);
+
+    let started_line = Line::from(vec![
+        Span::styled("STARTED ", Style::default().fg(C_DIM)),
+        Span::styled(
+            started_str,
+            Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    let sp = Paragraph::new(started_line).alignment(Alignment::Center);
+    f.render_widget(sp, rows[3]);
+}
+
+/// Render a string (digits + ':') as 5 lines of chunky block-character glyphs.
+fn big_digit_lines(s: &str, color: Color) -> Vec<Line<'static>> {
+    let mut rows: [String; 5] = Default::default();
+    for (i, ch) in s.chars().enumerate() {
+        let glyph = digit_glyph(ch);
+        for (r, row_buf) in rows.iter_mut().enumerate() {
+            if i > 0 {
+                row_buf.push(' ');
+            }
+            row_buf.push_str(glyph[r]);
+        }
+    }
+    rows.into_iter()
+        .map(|s| Line::from(Span::styled(s, Style::default().fg(color))))
+        .collect()
+}
+
+/// 7-segment-ish glyph for a single time character. Each glyph is 4 cols × 5 rows.
+fn digit_glyph(c: char) -> [&'static str; 5] {
+    match c {
+        '0' => [" ▄▄ ", "█  █", "█  █", "█  █", " ▀▀ "],
+        '1' => ["  ▄ ", " ▀█ ", "  █ ", "  █ ", " ▀▀▀"],
+        '2' => [" ▄▄ ", "▀  █", " ▄▄▀", "█   ", "▀▀▀▀"],
+        '3' => ["▄▄▄ ", "   █", " ▀▀▄", "   █", "▀▀▀ "],
+        '4' => ["█  █", "█  █", "▀▀▀█", "   █", "   ▀"],
+        '5' => ["▄▄▄▄", "█   ", "▀▀▀▄", "   █", "▀▀▀ "],
+        '6' => [" ▄▄▄", "█   ", "█▀▀▄", "█  █", " ▀▀ "],
+        '7' => ["▀▀▀█", "   █", "  █ ", "  █ ", "  ▀ "],
+        '8' => [" ▄▄ ", "█  █", " ▀▀ ", "█  █", " ▀▀ "],
+        '9' => [" ▄▄ ", "█  █", " ▀▀█", "   █", " ▀▀ "],
+        ':' => ["    ", "  ▄ ", "    ", "  ▀ ", "    "],
+        _   => ["    ", "    ", "    ", "    ", "    "],
     }
 }
 
@@ -1005,6 +1095,31 @@ mod tests {
         let mut state = AppState::new("WalkingPad".into());
         state.mode = AppMode::Connecting;
         terminal.draw(|f| draw(f, &state)).unwrap();
+    }
+
+    #[test]
+    fn test_render_session_clock_wide_terminal() {
+        // 140 cols leaves room for disc(44) + stats(>=30) + clock(44).
+        let backend = TestBackend::new(140, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = session_state(SessionState::Running, true);
+        state.session_start_at = Some(std::time::SystemTime::UNIX_EPOCH);
+        terminal.draw(|f| draw(f, &state)).unwrap();
+    }
+
+    #[test]
+    fn test_render_session_clock_narrow_terminal() {
+        // 80 cols clips the clock cell; should still render without panicking.
+        let backend = TestBackend::new(80, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let state = session_state(SessionState::Idle, false);
+        terminal.draw(|f| draw(f, &state)).unwrap();
+    }
+
+    #[test]
+    fn test_big_digit_lines_produces_five_rows() {
+        let lines = big_digit_lines("12:34:56", C_PRIMARY);
+        assert_eq!(lines.len(), 5);
     }
 
     #[test]
