@@ -41,6 +41,22 @@ pub struct ConfigDialog {
     pub fit_token_saved: bool,
 }
 
+/// Speed-input popup state — collects up to two digits (raw 0.1 km/h units)
+/// for a direct "go to speed" entry while the belt is running.
+#[derive(Debug, Default)]
+pub struct SpeedInput {
+    pub visible: bool,
+    /// Up to 2 chars, raw tenths of km/h (e.g. "35" → 3.5 km/h).
+    pub digits: String,
+}
+
+impl SpeedInput {
+    /// Parsed raw speed (0.1 km/h units), or None if the buffer is empty/invalid.
+    pub fn parse_raw(&self) -> Option<u8> {
+        self.digits.parse::<u8>().ok()
+    }
+}
+
 /// Snapshot of session stats captured when the session ends.
 #[derive(Debug, Clone)]
 pub struct SessionSummary {
@@ -88,6 +104,9 @@ pub struct AppState {
     // ── Config dialog ─────────────────────────────────────────────────────
     pub config_dialog: ConfigDialog,
 
+    // ── Speed-input popup ─────────────────────────────────────────────────
+    pub speed_input: SpeedInput,
+
     // ── Double-tap tracking ───────────────────────────────────────────────
     /// When the last speed-up (↑/k) keypress fired; used for double-tap detection.
     pub last_up_at: Option<Instant>,
@@ -126,6 +145,7 @@ impl AppState {
             fit_client_id: None,
             fit_client_secret: None,
             config_dialog: ConfigDialog::default(),
+            speed_input: SpeedInput::default(),
             last_up_at: None,
             last_down_at: None,
             disc_angle: 0.0,
@@ -399,6 +419,41 @@ mod tests {
 
         assert_eq!(s.session, SessionState::Running);
         assert_eq!(s.session_start_at, Some(started_at));
+    }
+
+    // ── Speed-input popup ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_speed_input_parse_raw_two_digits() {
+        let si = SpeedInput { visible: true, digits: "35".into() };
+        assert_eq!(si.parse_raw(), Some(35));
+    }
+
+    #[test]
+    fn test_speed_input_parse_raw_empty_is_none() {
+        let si = SpeedInput { visible: true, digits: String::new() };
+        assert_eq!(si.parse_raw(), None);
+    }
+
+    #[test]
+    fn test_speed_input_clamp_below_min() {
+        let s = AppState::new("WalkingPad".into());
+        let raw = 5u8.clamp(s.min_speed_raw, s.max_speed_raw);
+        assert_eq!(raw, s.min_speed_raw); // 1.0 km/h
+    }
+
+    #[test]
+    fn test_speed_input_clamp_above_max() {
+        let s = AppState::new("WalkingPad".into());
+        let raw = 99u8.clamp(s.min_speed_raw, s.max_speed_raw);
+        assert_eq!(raw, s.max_speed_raw); // 6.0 km/h
+    }
+
+    #[test]
+    fn test_speed_input_clamp_in_range() {
+        let s = AppState::new("WalkingPad".into());
+        let raw = 35u8.clamp(s.min_speed_raw, s.max_speed_raw);
+        assert_eq!(raw, 35);
     }
 
     #[test]

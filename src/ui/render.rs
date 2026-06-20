@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 use crate::session::SessionState;
-use crate::ui::app::{AppMode, AppState, ConfigDialog, SessionSummary};
+use crate::ui::app::{AppMode, AppState, ConfigDialog, SessionSummary, SpeedInput};
 
 // ─── Palette (btop-inspired, cypherpunk green core) ───────────────────────────
 
@@ -49,6 +49,9 @@ pub fn draw(f: &mut Frame, state: &AppState) {
     }
     if state.config_dialog.visible {
         draw_config_dialog(f, &state.config_dialog, area);
+    }
+    if state.speed_input.visible {
+        draw_speed_input(f, &state.speed_input, area);
     }
 }
 
@@ -153,6 +156,65 @@ fn draw_config_dialog(f: &mut Frame, dlg: &ConfigDialog, screen: Rect) {
             .border_style(Style::default().fg(C_PRIMARY))
             .title(Span::styled(
                 " CONFIG ",
+                Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+            ))
+            .style(Style::default().bg(C_BG)),
+    );
+    f.render_widget(dialog, popup);
+}
+
+// ─── Speed-input popup (modal overlay) ───────────────────────────────────────
+
+fn draw_speed_input(f: &mut Frame, si: &SpeedInput, screen: Rect) {
+    const W: u16 = 40;
+    const H: u16 = 9;
+    let w = W.min(screen.width);
+    let h = H.min(screen.height);
+    let x = screen.x + screen.width.saturating_sub(w) / 2;
+    let y = screen.y + screen.height.saturating_sub(h) / 2;
+    let popup = Rect::new(x, y, w, h);
+
+    f.render_widget(Clear, popup);
+
+    let typed = if si.digits.is_empty() {
+        "__".to_string()
+    } else {
+        format!("{:_<2}", si.digits)
+    };
+    let preview = match si.parse_raw() {
+        Some(raw) => format!("{:.1} km/h", raw as f32 / 10.0),
+        None => "— —".to_string(),
+    };
+
+    let lines: Vec<Line> = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("   Enter speed  ", Style::default().fg(C_DIM)),
+            Span::styled(
+                typed,
+                Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  →  ", Style::default().fg(C_DIM)),
+            Span::styled(preview, Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(Span::styled(
+            "   raw tenths · range 10–60 (1.0–6.0 km/h)",
+            Style::default().fg(C_DIM),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "   [0-9] digits   [Enter] confirm   [Esc] cancel",
+            Style::default().fg(C_DIM),
+        )),
+    ];
+
+    let dialog = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .border_style(Style::default().fg(C_PRIMARY))
+            .title(Span::styled(
+                " SET SPEED ",
                 Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
             ))
             .style(Style::default().bg(C_BG)),
@@ -474,7 +536,7 @@ fn draw_session(f: &mut Frame, state: &AppState) {
 
     let kb = match state.session {
         SessionState::Idle    => "[s] START   [c] CONFIG   [q] QUIT",
-        SessionState::Running => "[p] PAUSE   [↑/k] +0.1   [↓/j] -0.1   [h] SLOW   [l] MAX   [c] CONFIG   [q] QUIT",
+        SessionState::Running => "[p] PAUSE   [↑/k] +0.1   [↓/j] -0.1   [h] SLOW   [l] MAX   [g] SET   [c] CONFIG   [q] QUIT",
         SessionState::Paused  => "[r] RESUME   [x] END SESSION   [c] CONFIG   [q] QUIT",
     };
     f.render_widget(keys(kb), root[4]);
@@ -959,6 +1021,25 @@ mod tests {
         state.stats.update(50, 100, 30);
         state.pump_frames = 3;
         state.disc_angle = std::f64::consts::PI;
+        terminal.draw(|f| draw(f, &state)).unwrap();
+    }
+
+    #[test]
+    fn test_render_speed_input_popup_does_not_panic() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = session_state(SessionState::Running, true);
+        state.speed_input.visible = true;
+        state.speed_input.digits = "35".into();
+        terminal.draw(|f| draw(f, &state)).unwrap();
+    }
+
+    #[test]
+    fn test_render_speed_input_popup_empty_does_not_panic() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = session_state(SessionState::Running, true);
+        state.speed_input.visible = true;
         terminal.draw(|f| draw(f, &state)).unwrap();
     }
 

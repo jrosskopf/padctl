@@ -251,6 +251,12 @@ impl RuntimeController {
             return;
         }
 
+        // Speed-input popup intercepts keys while visible
+        if self.state.speed_input.visible {
+            self.handle_speed_input_key(code).await;
+            return;
+        }
+
         // [c] opens the config dialog from any mode except Connecting
         if code == KeyCode::Char('c') && self.state.mode != AppMode::Connecting {
             self.open_config_dialog();
@@ -320,6 +326,32 @@ impl RuntimeController {
                 2 => self.state.config_dialog.input_client_secret.push(c),
                 _ => {}
             },
+            _ => {}
+        }
+    }
+
+    async fn handle_speed_input_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Esc => {
+                self.state.speed_input = Default::default();
+            }
+            KeyCode::Backspace => {
+                self.state.speed_input.digits.pop();
+            }
+            KeyCode::Char(c)
+                if c.is_ascii_digit() && self.state.speed_input.digits.len() < 2 =>
+            {
+                self.state.speed_input.digits.push(c);
+            }
+            KeyCode::Enter => {
+                if let Some(raw) = self.state.speed_input.parse_raw() {
+                    let clamped = raw.clamp(self.state.min_speed_raw, self.state.max_speed_raw);
+                    let _ = self.cmd_tx.send(Cmd::SetSpeed(clamped)).await;
+                    self.state
+                        .push_log(format!(">> Set speed {:.1} km/h", clamped as f32 / 10.0));
+                }
+                self.state.speed_input = Default::default();
+            }
             _ => {}
         }
     }
@@ -547,6 +579,10 @@ impl RuntimeController {
             }
             (SessionState::Running, KeyCode::Char('l')) => {
                 let _ = self.cmd_tx.send(Cmd::SetSpeed(self.state.max_speed_raw)).await;
+            }
+            (SessionState::Running, KeyCode::Char('g')) => {
+                self.state.speed_input.visible = true;
+                self.state.speed_input.digits.clear();
             }
             (SessionState::Paused, KeyCode::Char('r')) => {
                 let _ = self.cmd_tx.send(Cmd::StartBelt).await;
