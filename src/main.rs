@@ -1,9 +1,10 @@
+mod ble;
 mod config;
 mod error;
 mod fit;
 mod logger;
-mod ble;
 mod session;
+mod telemetry;
 mod types;
 mod ui;
 
@@ -11,13 +12,13 @@ use std::io;
 use std::time::Duration;
 
 use clap::Parser;
-use log::{debug, error, info, warn};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::StreamExt;
+use log::{debug, error, info, warn};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::{mpsc, watch};
 use tokio::time;
@@ -28,15 +29,18 @@ use ble::scanner::{
     PROPRIETARY_NOTIFY_UUID, TREADMILL_DATA_UUID,
 };
 use ble::traits::WalkingPadBle;
-use uuid::Uuid;
+use config::AppConfig;
 use session::{SessionEvent, SessionState};
 use types::{BleEvent, Cmd};
 use ui::app::{AppMode, AppState, SessionSummary, CONFIG_DIALOG_ITEMS, DOUBLE_TAP_WINDOW};
 use ui::render;
-use config::AppConfig;
+use uuid::Uuid;
 
 #[derive(Parser, Debug)]
-#[command(name = "padctl", about = "Cypherpunk TUI for Kingfisher / KingSmith WalkingPad")]
+#[command(
+    name = "padctl",
+    about = "Cypherpunk TUI for Kingfisher / KingSmith WalkingPad"
+)]
 struct Cli {
     /// BLE advertised device name (overrides saved config)
     #[arg(long)]
@@ -53,6 +57,45 @@ struct Cli {
     /// Write debug log to padctl-debug.log in the current directory
     #[arg(long, default_value_t = false)]
     debug: bool,
+
+    /// Disable anonymous usage telemetry for this run. See TELEMETRY.md.
+    #[arg(long, default_value_t = false)]
+    no_telemetry: bool,
+}
+
+/// The only `feature` values padctl may emit.
+const PADCTL_FEATURES: &[&str] = &[
+    "session_started",
+    "session_ended",
+    "device_connected",
+    "google_fit_synced",
+];
+
+/// One line to stderr, once per install, pointing at the policy.
+fn telemetry_notice() {
+    let marker = dirs_cache().join("padctl-telemetry-notice");
+    if marker.exists() {
+        return;
+    }
+    if let Some(parent) = marker.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&marker, "1");
+    eprintln!(
+        "padctl sends anonymous usage telemetry (no device names, addresses or \
+         tokens). Disable with --no-telemetry, PADCTL_NO_TELEMETRY=1, or \
+         DO_NOT_TRACK=1. See \
+         https://github.com/jrosskopf/padctl/blob/main/TELEMETRY.md"
+    );
+}
+
+fn dirs_cache() -> std::path::PathBuf {
+    std::env::var("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache")
+        })
+        .join("padctl")
 }
 
 #[cfg(target_os = "linux")]
@@ -88,6 +131,7 @@ async fn check_bluez() {
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let cli = Cli::parse();
+    let no_telemetry = cli.no_telemetry;
 
     if cli.debug {
         logger::init()?;
@@ -103,11 +147,23 @@ async fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let telemetry = telemetry::Telemetry::new("padctl", env!("CARGO_PKG_VERSION"), no_telemetry)
+        .with_features(PADCTL_FEATURES);
+    if telemetry.is_enabled() {
+        telemetry_notice();
+        telemetry.capture("cli_started", vec![]);
+    }
+
     let result = run(&mut terminal, cli).await;
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
+
+    // reqwest::blocking panics if called from inside a tokio runtime, so the
+    // flush happens on a plain thread. It is best-effort either way: telemetry
+    // must never delay or fail the program it is measuring.
+    let _ = std::thread::spawn(move || telemetry.flush()).join();
 
     if let Err(e) = result {
         eprintln!("Error: {e}");
@@ -139,7 +195,10 @@ async fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, cli: Cli) ->
             continue;
         }
 
-        if let Event::Key(KeyEvent { code, modifiers, .. }) = event::read()? {
+        if let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        {
             if rt.should_quit(code, modifiers) {
                 rt.request_quit().await;
                 break;
@@ -302,12 +361,15 @@ impl RuntimeController {
                 self.state.config_dialog.selected = (self.state.config_dialog.selected + 1) % n;
             }
             KeyCode::Up => {
-                self.state.config_dialog.selected =
-                    (self.state.config_dialog.selected + n - 1) % n;
+                self.state.config_dialog.selected = (self.state.config_dialog.selected + n - 1) % n;
             }
             KeyCode::Backspace => match self.state.config_dialog.selected {
-                1 => { self.state.config_dialog.input_client_id.pop(); }
-                2 => { self.state.config_dialog.input_client_secret.pop(); }
+                1 => {
+                    self.state.config_dialog.input_client_id.pop();
+                }
+                2 => {
+                    self.state.config_dialog.input_client_secret.pop();
+                }
                 _ => {}
             },
             KeyCode::Enter => {
@@ -338,9 +400,7 @@ impl RuntimeController {
             KeyCode::Backspace => {
                 self.state.speed_input.digits.pop();
             }
-            KeyCode::Char(c)
-                if c.is_ascii_digit() && self.state.speed_input.digits.len() < 2 =>
-            {
+            KeyCode::Char(c) if c.is_ascii_digit() && self.state.speed_input.digits.len() < 2 => {
                 self.state.speed_input.digits.push(c);
             }
             KeyCode::Enter => {
@@ -367,12 +427,21 @@ impl RuntimeController {
 
     fn do_save_fit_config(&mut self) {
         let id = self.state.config_dialog.input_client_id.trim().to_string();
-        let secret = self.state.config_dialog.input_client_secret.trim().to_string();
-        self.cfg.fit_client_id     = if id.is_empty()     { None } else { Some(id) };
-        self.cfg.fit_client_secret = if secret.is_empty() { None } else { Some(secret) };
+        let secret = self
+            .state
+            .config_dialog
+            .input_client_secret
+            .trim()
+            .to_string();
+        self.cfg.fit_client_id = if id.is_empty() { None } else { Some(id) };
+        self.cfg.fit_client_secret = if secret.is_empty() {
+            None
+        } else {
+            Some(secret)
+        };
         match self.cfg.save() {
             Ok(()) => {
-                self.state.fit_client_id     = self.cfg.fit_client_id.clone();
+                self.state.fit_client_id = self.cfg.fit_client_id.clone();
                 self.state.fit_client_secret = self.cfg.fit_client_secret.clone();
                 self.state.push_log(">> Google Fit config saved");
             }
@@ -413,24 +482,18 @@ impl RuntimeController {
         match ms {
             StoppedBySafetyKey => {
                 self.state.push_log("!! Belt stopped by safety key");
-                self.state.sync_session_to_belt(
-                    protocol::BELT_STOPPED,
-                    std::time::SystemTime::now(),
-                );
+                self.state
+                    .sync_session_to_belt(protocol::BELT_STOPPED, std::time::SystemTime::now());
             }
             StoppedByUser => {
                 self.state.push_log(">> Belt stopped from device panel");
-                self.state.sync_session_to_belt(
-                    protocol::BELT_STOPPED,
-                    std::time::SystemTime::now(),
-                );
+                self.state
+                    .sync_session_to_belt(protocol::BELT_STOPPED, std::time::SystemTime::now());
             }
             StartedOrResumed => {
                 self.state.push_log(">> Belt started from device panel");
-                self.state.sync_session_to_belt(
-                    protocol::BELT_RUNNING,
-                    std::time::SystemTime::now(),
-                );
+                self.state
+                    .sync_session_to_belt(protocol::BELT_RUNNING, std::time::SystemTime::now());
             }
             SpeedChanged(raw) => {
                 let kmh = raw as f32 / 100.0;
@@ -505,11 +568,7 @@ impl RuntimeController {
             KeyCode::Char('y') if self.state.fit_configured() => {
                 if let Some(summary) = self.state.summary.take() {
                     self.state.push_log(">> Syncing to Google Fit…");
-                    fit::sync_in_background(
-                        self.cfg.clone(),
-                        summary,
-                        self.fit_log_tx.clone(),
-                    );
+                    fit::sync_in_background(self.cfg.clone(), summary, self.fit_log_tx.clone());
                 }
                 self.state.mode = AppMode::Session;
                 self.state.session_start_at = None;
@@ -537,7 +596,8 @@ impl RuntimeController {
                 if belt_already_running {
                     self.state
                         .sync_session_to_belt(protocol::BELT_RUNNING, std::time::SystemTime::now());
-                    self.state.push_log(">> Belt already running — session started");
+                    self.state
+                        .push_log(">> Belt already running — session started");
                 } else {
                     let _ = self.cmd_tx.send(Cmd::SetMode(protocol::MODE_MANUAL)).await;
                     self.state.push_log(">> Starting belt…");
@@ -545,8 +605,7 @@ impl RuntimeController {
                 }
             }
             (SessionState::Running, KeyCode::Char('p')) => {
-                self.state.resume_speed_raw =
-                    (self.state.stats.current_speed_kmh * 10.0) as u8;
+                self.state.resume_speed_raw = (self.state.stats.current_speed_kmh * 10.0) as u8;
                 let _ = self.cmd_tx.send(Cmd::StopBelt).await;
                 self.state.push_log(">> Pausing belt…");
             }
@@ -556,7 +615,11 @@ impl RuntimeController {
                     .state
                     .last_up_at
                     .is_some_and(|t| now.duration_since(t) < DOUBLE_TAP_WINDOW);
-                let step = if double { 5u8 } else { self.state.speed_step_raw };
+                let step = if double {
+                    5u8
+                } else {
+                    self.state.speed_step_raw
+                };
                 self.state.last_up_at = if double { None } else { Some(now) };
                 let cur = (self.state.stats.current_speed_kmh * 10.0) as u8;
                 let new = (cur + step).min(self.state.max_speed_raw);
@@ -568,17 +631,27 @@ impl RuntimeController {
                     .state
                     .last_down_at
                     .is_some_and(|t| now.duration_since(t) < DOUBLE_TAP_WINDOW);
-                let step = if double { 5u8 } else { self.state.speed_step_raw };
+                let step = if double {
+                    5u8
+                } else {
+                    self.state.speed_step_raw
+                };
                 self.state.last_down_at = if double { None } else { Some(now) };
                 let cur = (self.state.stats.current_speed_kmh * 10.0) as u8;
                 let new = cur.saturating_sub(step).max(self.state.min_speed_raw);
                 let _ = self.cmd_tx.send(Cmd::SetSpeed(new)).await;
             }
             (SessionState::Running, KeyCode::Char('h')) => {
-                let _ = self.cmd_tx.send(Cmd::SetSpeed(self.state.min_speed_raw)).await;
+                let _ = self
+                    .cmd_tx
+                    .send(Cmd::SetSpeed(self.state.min_speed_raw))
+                    .await;
             }
             (SessionState::Running, KeyCode::Char('l')) => {
-                let _ = self.cmd_tx.send(Cmd::SetSpeed(self.state.max_speed_raw)).await;
+                let _ = self
+                    .cmd_tx
+                    .send(Cmd::SetSpeed(self.state.max_speed_raw))
+                    .await;
             }
             (SessionState::Running, KeyCode::Char('g')) => {
                 self.state.speed_input.visible = true;
@@ -624,10 +697,7 @@ impl RuntimeController {
             (AppMode::Session, true) => {
                 self.state.push_log(">> BLE dropped — reconnecting…");
                 self.reset_cmd_channel();
-                self.spawn_session_task(
-                    self.cfg.device_name.clone(),
-                    self.cfg.device_addr.clone(),
-                );
+                self.spawn_session_task(self.cfg.device_name.clone(), self.cfg.device_addr.clone());
             }
             (AppMode::Session, false) => {
                 self.state.push_log(">> Reconnect failed — back to scan");
@@ -637,7 +707,8 @@ impl RuntimeController {
                 self.start_scan().await;
             }
             (AppMode::Connecting, _) => {
-                self.state.push_log(">> Connection failed — press [r] to rescan");
+                self.state
+                    .push_log(">> Connection failed — press [r] to rescan");
                 self.state.mode = AppMode::Scanning;
                 self.reset_cmd_channel();
                 self.start_scan().await;
@@ -737,9 +808,9 @@ async fn ble_session_task(
     // Filter by characteristic UUID: only Treadmill Data (0x2ACD) is parsed;
     // Control Point indications (0x2AD9) are logged and discarded.
     info!("ble_session_task: setting up notification stream…");
-    let treadmill_uuid       = Uuid::parse_str(TREADMILL_DATA_UUID).unwrap();
-    let proprietary_uuid     = Uuid::parse_str(PROPRIETARY_NOTIFY_UUID).unwrap();
-    let machine_status_uuid  = Uuid::parse_str(FITNESS_MACHINE_STATUS_UUID).unwrap();
+    let treadmill_uuid = Uuid::parse_str(TREADMILL_DATA_UUID).unwrap();
+    let proprietary_uuid = Uuid::parse_str(PROPRIETARY_NOTIFY_UUID).unwrap();
+    let machine_status_uuid = Uuid::parse_str(FITNESS_MACHINE_STATUS_UUID).unwrap();
     match driver.get_notifications().await {
         Ok(notif_stream) => {
             info!("ble_session_task: notification stream ready, spawning forwarder");
@@ -748,15 +819,22 @@ async fn ble_session_task(
                 futures::pin_mut!(notif_stream);
                 let mut count = 0u64;
                 while let Some(notif) = notif_stream.next().await {
-                    debug!("notif: uuid={} {} B: {:02X?}", notif.uuid, notif.value.len(), notif.value);
+                    debug!(
+                        "notif: uuid={} {} B: {:02X?}",
+                        notif.uuid,
+                        notif.value.len(),
+                        notif.value
+                    );
 
                     if notif.uuid == treadmill_uuid {
                         // FTMS Treadmill Data → speed, distance, elapsed time
                         match protocol::parse_ftms_treadmill_data(&notif.value) {
                             Ok(status) => {
                                 count += 1;
-                                debug!("notif: FTMS #{count} speed={} dist={} time={}s",
-                                       status.speed_raw, status.dist_raw, status.time_secs);
+                                debug!(
+                                    "notif: FTMS #{count} speed={} dist={} time={}s",
+                                    status.speed_raw, status.dist_raw, status.time_secs
+                                );
                                 let _ = notif_tx.send(BleEvent::Status(status)).await;
                             }
                             Err(e) => {
@@ -773,7 +851,11 @@ async fn ble_session_task(
                         match protocol::parse_status(&notif.value) {
                             Ok(status) => {
                                 // Log all decoded fields + the unknown tail (bytes 14–19)
-                                let tail = if notif.value.len() > 14 { &notif.value[14..] } else { &[] };
+                                let tail = if notif.value.len() > 14 {
+                                    &notif.value[14..]
+                                } else {
+                                    &[]
+                                };
                                 debug!(
                                     "notif: proprietary belt={:#04x} speed={} time={}s dist={} steps={} tail={:02X?}",
                                     status.belt_state, status.speed_raw, status.time_secs,
@@ -782,7 +864,10 @@ async fn ble_session_task(
                                 let _ = notif_tx.send(BleEvent::StepCount(status.steps)).await;
                             }
                             Err(e) => {
-                                debug!("notif: proprietary parse failed: {e} — raw: {:02X?}", notif.value);
+                                debug!(
+                                    "notif: proprietary parse failed: {e} — raw: {:02X?}",
+                                    notif.value
+                                );
                             }
                         }
                     } else {
@@ -865,9 +950,9 @@ async fn ble_session_task(
                 // FTMS SetTargetSpeed (0x02) expects uint16 LE in 0.01 km/h → raw * 10
                 let ftms_speed = (raw as u16) * 10;
                 info!("ble_session_task: cmd SetSpeed({raw}) → FTMS [0x02 {ftms_speed:#06X}]");
-                driver.write_command(&[0x02,
-                    (ftms_speed & 0xFF) as u8,
-                    (ftms_speed >> 8) as u8]).await
+                driver
+                    .write_command(&[0x02, (ftms_speed & 0xFF) as u8, (ftms_speed >> 8) as u8])
+                    .await
             }
             Cmd::SetMode(m) => {
                 // SetMode not used in FTMS — silently ignore

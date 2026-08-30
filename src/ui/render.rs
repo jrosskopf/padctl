@@ -1,14 +1,14 @@
 use std::f64::consts::{PI, TAU};
 
 use ratatui::{
-    Frame,
-    layout::{Constraint, Direction, Layout, Alignment, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         canvas::{Canvas, Circle, Context},
-        Block, Borders, BorderType, Clear, Gauge, List, ListItem, Paragraph, Wrap,
+        Block, BorderType, Borders, Clear, Gauge, List, ListItem, Paragraph, Wrap,
     },
+    Frame,
 };
 
 use crate::session::SessionState;
@@ -17,34 +17,34 @@ use crate::ui::app::{AppMode, AppState, ConfigDialog, SessionSummary, SpeedInput
 // ─── Palette (btop-inspired, cypherpunk green core) ───────────────────────────
 
 /// Rich seafoam-green — primary text / borders
-const C_PRIMARY:   Color = Color::Rgb(0, 230, 160);
+const C_PRIMARY: Color = Color::Rgb(0, 230, 160);
 /// Dimmed version for labels, secondary borders
-const C_DIM:       Color = Color::Rgb(0, 110, 75);
+const C_DIM: Color = Color::Rgb(0, 110, 75);
 /// Very dark background
-const C_BG:        Color = Color::Rgb(8, 8, 12);
+const C_BG: Color = Color::Rgb(8, 8, 12);
 /// Amber — paused state, warnings
-const C_AMBER:     Color = Color::Rgb(255, 185, 0);
+const C_AMBER: Color = Color::Rgb(255, 185, 0);
 /// Red — disconnected, errors
-const C_RED:       Color = Color::Rgb(220, 60, 60);
+const C_RED: Color = Color::Rgb(220, 60, 60);
 /// Cyan accent — disc ring, highlights
-const C_CYAN:      Color = Color::Rgb(0, 210, 220);
+const C_CYAN: Color = Color::Rgb(0, 210, 220);
 /// Disc sweep arc colour (bright lime)
-const C_SWEEP:     Color = Color::Rgb(120, 255, 80);
+const C_SWEEP: Color = Color::Rgb(120, 255, 80);
 /// Pump pulse colour (hot pink / magenta flash)
-const C_PUMP:      Color = Color::Rgb(255, 80, 200);
+const C_PUMP: Color = Color::Rgb(255, 80, 200);
 /// Speed bar fill gradient start (green)
-const C_BAR_LO:    Color = Color::Rgb(40, 200, 100);
+const C_BAR_LO: Color = Color::Rgb(40, 200, 100);
 /// Speed bar fill gradient end (amber, shown near max speed)
-const C_BAR_HI:    Color = Color::Rgb(230, 180, 0);
+const C_BAR_HI: Color = Color::Rgb(230, 180, 0);
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 pub fn draw(f: &mut Frame, state: &AppState) {
     let area = f.area();
     match state.mode {
-        AppMode::Scanning       => draw_scanning(f, state),
-        AppMode::Connecting     => draw_connecting(f, state),
-        AppMode::Session        => draw_session(f, state),
+        AppMode::Scanning => draw_scanning(f, state),
+        AppMode::Connecting => draw_connecting(f, state),
+        AppMode::Session => draw_session(f, state),
         AppMode::SessionSummary => draw_summary(f, state),
     }
     if state.config_dialog.visible {
@@ -97,12 +97,16 @@ fn draw_config_dialog(f: &mut Frame, dlg: &ConfigDialog, screen: Rect) {
         };
         let padded = format!("{:<field_w$}", val);
         let cursor = if focused { "█" } else { " " };
-        let style = if focused { Style::default().fg(C_PRIMARY) } else { Style::default().fg(C_DIM) };
+        let style = if focused {
+            Style::default().fg(C_PRIMARY)
+        } else {
+            Style::default().fg(C_DIM)
+        };
         Span::styled(format!("[{padded}{cursor}]"), style).into()
     };
 
-    let id_field  = render_field(&dlg.input_client_id,     "— not set —", false, sel == 1);
-    let sec_field = render_field(&dlg.input_client_secret,  "— not set —", true,  sel == 2);
+    let id_field = render_field(&dlg.input_client_id, "— not set —", false, sel == 1);
+    let sec_field = render_field(&dlg.input_client_secret, "— not set —", true, sel == 2);
 
     let device_line = truncate(&dlg.device_display, inner_w.saturating_sub(2));
     let sep = "─".repeat(inner_w);
@@ -116,22 +120,34 @@ fn draw_config_dialog(f: &mut Frame, dlg: &ConfigDialog, screen: Rect) {
     let lines: Vec<Line> = vec![
         Line::from(""),
         Line::from(Span::styled("  ─── DEVICE ", Style::default().fg(C_DIM))),
-        Line::from(Span::styled(format!("  {device_line}"), Style::default().fg(C_PRIMARY))),
+        Line::from(Span::styled(
+            format!("  {device_line}"),
+            Style::default().fg(C_PRIMARY),
+        )),
         Line::from(vec![
             Span::styled(format!("  {} ", arrow(sel == 0)), btn(sel == 0)),
             Span::styled("[ Unpair — forget saved device ]", btn(sel == 0)),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  ─── GOOGLE FIT ", Style::default().fg(C_DIM))),
+        Line::from(Span::styled(
+            "  ─── GOOGLE FIT ",
+            Style::default().fg(C_DIM),
+        )),
         // Client ID row: label + field on same line
         {
-            let mut spans = vec![Span::styled("  Client ID      ", Style::default().fg(C_DIM))];
+            let mut spans = vec![Span::styled(
+                "  Client ID      ",
+                Style::default().fg(C_DIM),
+            )];
             spans.extend(id_field.spans);
             Line::from(spans)
         },
         // Client Secret row
         {
-            let mut spans = vec![Span::styled("  Client Secret  ", Style::default().fg(C_DIM))];
+            let mut spans = vec![Span::styled(
+                "  Client Secret  ",
+                Style::default().fg(C_DIM),
+            )];
             spans.extend(sec_field.spans);
             Line::from(spans)
         },
@@ -195,7 +211,10 @@ fn draw_speed_input(f: &mut Frame, si: &SpeedInput, screen: Rect) {
                 Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
             ),
             Span::styled("  →  ", Style::default().fg(C_DIM)),
-            Span::styled(preview, Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                preview,
+                Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(Span::styled(
             "   raw tenths · range 10–60 (1.0–6.0 km/h)",
@@ -263,26 +282,35 @@ fn draw_scanning(f: &mut Frame, state: &AppState) {
             Style::default().fg(C_DIM),
         ))]
     } else {
-        state.scan_results.iter().enumerate().map(|(i, d)| {
-            let cursor = if i == state.scan_cursor { "▶ " } else { "  " };
-            let rssi_str = d.rssi
-                .map(|r| format!("{r:4} dBm"))
-                .unwrap_or_else(|| "    ---".into());
-            let name_col = format!("{:<24}", truncate(&d.name, 24));
-            let text = format!("{cursor}{name_col}  {}  {rssi_str}", d.addr);
-            let style = if i == state.scan_cursor {
-                Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(C_DIM)
-            };
-            ListItem::new(text).style(style)
-        }).collect()
+        state
+            .scan_results
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let cursor = if i == state.scan_cursor { "▶ " } else { "  " };
+                let rssi_str = d
+                    .rssi
+                    .map(|r| format!("{r:4} dBm"))
+                    .unwrap_or_else(|| "    ---".into());
+                let name_col = format!("{:<24}", truncate(&d.name, 24));
+                let text = format!("{cursor}{name_col}  {}  {rssi_str}", d.addr);
+                let style = if i == state.scan_cursor {
+                    Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(C_DIM)
+                };
+                ListItem::new(text).style(style)
+            })
+            .collect()
     };
 
     let list_title = format!(
         " DEVICES ({}) ",
-        if state.scan_results.is_empty() { "searching…".into() }
-        else { format!("{} found", state.scan_results.len()) }
+        if state.scan_results.is_empty() {
+            "searching…".into()
+        } else {
+            format!("{} found", state.scan_results.len())
+        }
     );
 
     let list = List::new(items).block(
@@ -290,16 +318,25 @@ fn draw_scanning(f: &mut Frame, state: &AppState) {
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
             .border_style(Style::default().fg(C_PRIMARY))
-            .title(Span::styled(list_title, Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                list_title,
+                Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+            ))
             .style(Style::default().bg(C_BG)),
     );
     f.render_widget(list, layout[1]);
 
     if show_log {
         draw_log(f, state, layout[2]);
-        f.render_widget(keys("[↑/k] up  [↓/j] down  [Enter] connect  [r] rescan  [c] config  [q] quit"), layout[3]);
+        f.render_widget(
+            keys("[↑/k] up  [↓/j] down  [Enter] connect  [r] rescan  [c] config  [q] quit"),
+            layout[3],
+        );
     } else {
-        f.render_widget(keys("[↑/k] up  [↓/j] down  [Enter] connect  [r] rescan  [c] config  [q] quit"), layout[2]);
+        f.render_widget(
+            keys("[↑/k] up  [↓/j] down  [Enter] connect  [r] rescan  [c] config  [q] quit"),
+            layout[2],
+        );
     }
 }
 
@@ -322,7 +359,10 @@ fn draw_connecting(f: &mut Frame, state: &AppState) {
         layout[0],
     );
 
-    let addr_line = state.connecting_addr.as_deref().unwrap_or("scanning by name…");
+    let addr_line = state
+        .connecting_addr
+        .as_deref()
+        .unwrap_or("scanning by name…");
     let body = Paragraph::new(vec![
         Line::from(""),
         Line::from(Span::styled(
@@ -354,10 +394,10 @@ fn draw_summary(f: &mut Frame, state: &AppState) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // header
-            Constraint::Length(6),  // stat grid
-            Constraint::Min(3),     // sync prompt
-            Constraint::Length(3),  // keys
+            Constraint::Length(3), // header
+            Constraint::Length(6), // stat grid
+            Constraint::Min(3),    // sync prompt
+            Constraint::Length(3), // keys
         ])
         .split(area);
 
@@ -390,18 +430,15 @@ fn draw_summary(f: &mut Frame, state: &AppState) {
         .split(root[1]);
 
     let stat_cells = [
-        ("TIME",     time_str,  C_CYAN),
-        ("STEPS",    steps_str, C_PRIMARY),
-        ("DISTANCE", dist_str,  C_PRIMARY),
-        ("KCAL",     kcal_str,  C_AMBER),
+        ("TIME", time_str, C_CYAN),
+        ("STEPS", steps_str, C_PRIMARY),
+        ("DISTANCE", dist_str, C_PRIMARY),
+        ("KCAL", kcal_str, C_AMBER),
     ];
 
     for (i, (label, value, color)) in stat_cells.iter().enumerate() {
         let p = Paragraph::new(vec![
-            Line::from(Span::styled(
-                *label,
-                Style::default().fg(C_DIM),
-            )),
+            Line::from(Span::styled(*label, Style::default().fg(C_DIM))),
             Line::from(Span::styled(
                 value.as_str(),
                 Style::default().fg(*color).add_modifier(Modifier::BOLD),
@@ -428,8 +465,14 @@ fn draw_summary(f: &mut Frame, state: &AppState) {
             )),
             Line::from(""),
             Line::from(vec![
-                Span::styled("  [y] ", Style::default().fg(C_CYAN).add_modifier(Modifier::BOLD)),
-                Span::styled("SYNC", Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "  [y] ",
+                    Style::default().fg(C_CYAN).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "SYNC",
+                    Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("      ", Style::default().fg(C_DIM)),
                 Span::styled("[n] ", Style::default().fg(C_DIM)),
                 Span::styled("DISCARD", Style::default().fg(C_DIM)),
@@ -445,14 +488,13 @@ fn draw_summary(f: &mut Frame, state: &AppState) {
         ]
     };
 
-    let prompt = Paragraph::new(prompt_lines)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Plain)
-                .border_style(Style::default().fg(C_DIM))
-                .style(Style::default().bg(C_BG)),
-        );
+    let prompt = Paragraph::new(prompt_lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(C_DIM))
+            .style(Style::default().bg(C_BG)),
+    );
     f.render_widget(prompt, root[2]);
 
     let kb = if state.fit_configured() {
@@ -481,27 +523,37 @@ fn draw_session(f: &mut Frame, state: &AppState) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),   // header
-            Constraint::Length(24),  // disc + stats row
-            Constraint::Length(3),   // gauge
-            Constraint::Min(4),      // log
-            Constraint::Length(3),   // keys
+            Constraint::Length(3),  // header
+            Constraint::Length(24), // disc + stats row
+            Constraint::Length(3),  // gauge
+            Constraint::Min(4),     // log
+            Constraint::Length(3),  // keys
         ])
         .split(area);
 
     // Header
-    let ble_label = if state.ble_connected { "BLE ●" } else { "BLE ✗" };
-    let ble_clr   = if state.ble_connected { C_CYAN } else { C_RED };
-    let sess_clr  = session_color(&state.session);
+    let ble_label = if state.ble_connected {
+        "BLE ●"
+    } else {
+        "BLE ✗"
+    };
+    let ble_clr = if state.ble_connected { C_CYAN } else { C_RED };
+    let sess_clr = session_color(&state.session);
 
     let hdr = Paragraph::new(Line::from(vec![
-        Span::styled(" ▓ PADCTL ▓ ", Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " ▓ PADCTL ▓ ",
+            Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             format!("[{}]", state.status_label()),
             Style::default().fg(sess_clr).add_modifier(Modifier::BOLD),
         ),
         Span::styled("  ·  ", Style::default().fg(C_DIM)),
-        Span::styled(ble_label, Style::default().fg(ble_clr).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            ble_label,
+            Style::default().fg(ble_clr).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             format!("  {}  ", state.device_name),
             Style::default().fg(C_DIM),
@@ -545,9 +597,9 @@ fn draw_session(f: &mut Frame, state: &AppState) {
 // ─── Disc widget ──────────────────────────────────────────────────────────────
 
 fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
-    let pumping    = state.pump_frames > 0;
-    let angle      = state.disc_angle;
-    let running    = state.session == SessionState::Running;
+    let pumping = state.pump_frames > 0;
+    let angle = state.disc_angle;
+    let running = state.session == SessionState::Running;
     let speed_frac = (state.stats.current_speed_kmh / 6.0).clamp(0.0, 1.0) as f64;
 
     // ── Aspect-ratio correction ────────────────────────────────────────────
@@ -563,13 +615,13 @@ fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
     let ew = area.width.saturating_sub(2).max(1) as f64;
     let eh = area.height.saturating_sub(2).max(1) as f64;
     let x_ext = 10.0_f64;
-    let y_ext  = x_ext * 2.0 * eh / ew;
+    let y_ext = x_ext * 2.0 * eh / ew;
 
     // Disc radii in coordinate units (scale with y_ext so they fill the space)
-    let scale   = y_ext / 10.0; // 1.0 for the nominal 22×12 panel
+    let scale = y_ext / 10.0; // 1.0 for the nominal 22×12 panel
     let r_outer: f64 = (if pumping { 8.5 } else { 8.0 }) * scale;
     let r_inner: f64 = (if pumping { 5.5 } else { 6.0 }) * scale;
-    let r_hub:   f64 = 1.8 * scale;
+    let r_hub: f64 = 1.8 * scale;
 
     let sweep_len = PI * 0.55;
 
@@ -578,8 +630,8 @@ fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
     } else {
         match state.session {
             SessionState::Running => C_CYAN,
-            SessionState::Paused  => C_AMBER,
-            SessionState::Idle    => C_DIM,
+            SessionState::Paused => C_AMBER,
+            SessionState::Idle => C_DIM,
         }
     };
 
@@ -598,39 +650,55 @@ fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
             draw_ring(ctx, 0.0, 0.0, r_outer, r_inner, C_DIM, 80);
 
             if running || pumping {
-                draw_arc_ring(ctx, ArcRing {
-                    cx: 0.0,
-                    cy: 0.0,
-                    r_out: r_outer,
-                    r_in: r_inner,
-                    a_start: angle,
-                    a_end: angle + sweep_len,
-                    color: C_SWEEP,
-                    steps: 60,
-                });
+                draw_arc_ring(
+                    ctx,
+                    ArcRing {
+                        cx: 0.0,
+                        cy: 0.0,
+                        r_out: r_outer,
+                        r_in: r_inner,
+                        a_start: angle,
+                        a_end: angle + sweep_len,
+                        color: C_SWEEP,
+                        steps: 60,
+                    },
+                );
             }
 
             if running {
                 let tx = (angle + sweep_len).cos() * ((r_outer + r_inner) / 2.0);
                 let ty = (angle + sweep_len).sin() * ((r_outer + r_inner) / 2.0);
-                ctx.draw(&Circle { x: tx, y: ty, radius: 0.6 * scale, color: Color::White });
+                ctx.draw(&Circle {
+                    x: tx,
+                    y: ty,
+                    radius: 0.6 * scale,
+                    color: Color::White,
+                });
             }
 
             if running {
                 let fill_end = speed_frac * TAU;
-                draw_arc_ring(ctx, ArcRing {
-                    cx: 0.0,
-                    cy: 0.0,
-                    r_out: r_inner - 0.3 * scale,
-                    r_in: r_inner - 1.5 * scale,
-                    a_start: -PI / 2.0,
-                    a_end: -PI / 2.0 + fill_end,
-                    color: lerp_color(C_BAR_LO, C_BAR_HI, speed_frac),
-                    steps: 50,
-                });
+                draw_arc_ring(
+                    ctx,
+                    ArcRing {
+                        cx: 0.0,
+                        cy: 0.0,
+                        r_out: r_inner - 0.3 * scale,
+                        r_in: r_inner - 1.5 * scale,
+                        a_start: -PI / 2.0,
+                        a_end: -PI / 2.0 + fill_end,
+                        color: lerp_color(C_BAR_LO, C_BAR_HI, speed_frac),
+                        steps: 50,
+                    },
+                );
             }
 
-            ctx.draw(&Circle { x: 0.0, y: 0.0, radius: r_hub, color: ring_color });
+            ctx.draw(&Circle {
+                x: 0.0,
+                y: 0.0,
+                radius: r_hub,
+                color: ring_color,
+            });
         });
 
     f.render_widget(canvas, area);
@@ -644,9 +712,14 @@ fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
     // Place it in the vertical centre of the canvas area
     let text_y = area.y + area.height / 2;
     let text_x = area.x + 1;
-    let text_w  = area.width.saturating_sub(2);
+    let text_w = area.width.saturating_sub(2);
     if text_y < area.y + area.height {
-        let overlay_rect = Rect { x: text_x, y: text_y, width: text_w, height: 1 };
+        let overlay_rect = Rect {
+            x: text_x,
+            y: text_y,
+            width: text_w,
+            height: 1,
+        };
         let p = Paragraph::new(Span::styled(
             hub_label,
             Style::default()
@@ -660,7 +733,15 @@ fn draw_disc(f: &mut Frame, state: &AppState, area: Rect) {
 }
 
 /// Draw a full ring (annulus) using small arc segments.
-fn draw_ring(ctx: &mut Context, cx: f64, cy: f64, r_out: f64, r_in: f64, color: Color, steps: usize) {
+fn draw_ring(
+    ctx: &mut Context,
+    cx: f64,
+    cy: f64,
+    r_out: f64,
+    r_in: f64,
+    color: Color,
+    steps: usize,
+) {
     draw_arc_ring(
         ctx,
         ArcRing {
@@ -734,14 +815,22 @@ fn draw_stats(f: &mut Frame, state: &AppState, area: Rect) {
     let sess_color = session_color(&state.session);
 
     let top_cells = [
-        ("TIME",     AppState::format_time(stats.active_seconds),       C_CYAN),
-        ("SPEED",    format!("{:.1} km/h", stats.current_speed_kmh),    sess_color),
-        ("DISTANCE", format!("{:.2} km",   stats.total_distance_km),    C_PRIMARY),
+        ("TIME", AppState::format_time(stats.active_seconds), C_CYAN),
+        (
+            "SPEED",
+            format!("{:.1} km/h", stats.current_speed_kmh),
+            sess_color,
+        ),
+        (
+            "DISTANCE",
+            format!("{:.2} km", stats.total_distance_km),
+            C_PRIMARY,
+        ),
     ];
     let bot_cells = [
-        ("STEPS",    format!("{}", stats.total_steps),                   C_PRIMARY),
-        ("KCAL",     format!("{:.0}", stats.calories),                   C_AMBER),
-        ("STATE",    state.status_label().to_string(),                   sess_color),
+        ("STEPS", format!("{}", stats.total_steps), C_PRIMARY),
+        ("KCAL", format!("{:.0}", stats.calories), C_AMBER),
+        ("STATE", state.status_label().to_string(), sess_color),
     ];
 
     render_stat_row(f, rows[1], &top_cells);
@@ -760,10 +849,7 @@ fn render_stat_row(f: &mut Frame, area: Rect, cells: &[(&str, String, Color); 3]
 
     for (i, (label, value, color)) in cells.iter().enumerate() {
         let p = Paragraph::new(vec![
-            Line::from(Span::styled(
-                *label,
-                Style::default().fg(C_DIM),
-            )),
+            Line::from(Span::styled(*label, Style::default().fg(C_DIM))),
             Line::from(Span::styled(
                 value.as_str(),
                 Style::default().fg(*color).add_modifier(Modifier::BOLD),
@@ -819,8 +905,7 @@ fn draw_clock(f: &mut Frame, state: &AppState, area: Rect) {
         ])
         .split(inner);
 
-    let big = Paragraph::new(big_digit_lines(&time_str, C_PRIMARY))
-        .alignment(Alignment::Center);
+    let big = Paragraph::new(big_digit_lines(&time_str, C_PRIMARY)).alignment(Alignment::Center);
     f.render_widget(big, rows[1]);
 
     let started_line = Line::from(vec![
@@ -865,7 +950,7 @@ fn digit_glyph(c: char) -> [&'static str; 5] {
         '8' => [" ▄▄ ", "█  █", " ▀▀ ", "█  █", " ▀▀ "],
         '9' => [" ▄▄ ", "█  █", " ▀▀█", "   █", " ▀▀ "],
         ':' => ["    ", "  ▄ ", "    ", "  ▀ ", "    "],
-        _   => ["    ", "    ", "    ", "    ", "    "],
+        _ => ["    ", "    ", "    ", "    ", "    "],
     }
 }
 
@@ -873,8 +958,7 @@ fn digit_glyph(c: char) -> [&'static str; 5] {
 
 fn draw_gauge(f: &mut Frame, state: &AppState, area: Rect) {
     let ratio = if state.max_speed_raw > 0 {
-        (state.stats.current_speed_kmh / (state.max_speed_raw as f32 / 10.0))
-            .clamp(0.0, 1.0) as f64
+        (state.stats.current_speed_kmh / (state.max_speed_raw as f32 / 10.0)).clamp(0.0, 1.0) as f64
     } else {
         0.0
     };
@@ -889,7 +973,8 @@ fn draw_gauge(f: &mut Frame, state: &AppState, area: Rect) {
                 .border_type(BorderType::Plain)
                 .border_style(Style::default().fg(C_DIM))
                 .title(Span::styled(
-                    format!(" BELT  {:.1} / {:.1} km/h ",
+                    format!(
+                        " BELT  {:.1} / {:.1} km/h ",
                         state.stats.current_speed_kmh,
                         state.max_speed_raw as f32 / 10.0,
                     ),
@@ -933,8 +1018,16 @@ fn draw_log(f: &mut Frame, state: &AppState, area: Rect) {
 
 fn header_bar<'a>(prefix: &'a str, status: &'a str, status_color: Color) -> Paragraph<'a> {
     Paragraph::new(Line::from(vec![
-        Span::styled(prefix, Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD)),
-        Span::styled(status, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            prefix,
+            Style::default().fg(C_PRIMARY).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            status,
+            Style::default()
+                .fg(status_color)
+                .add_modifier(Modifier::BOLD),
+        ),
     ]))
     .block(
         Block::default()
@@ -964,13 +1057,17 @@ fn keys(text: &str) -> Paragraph<'_> {
 fn session_color(state: &SessionState) -> Color {
     match state {
         SessionState::Running => C_PRIMARY,
-        SessionState::Paused  => C_AMBER,
-        SessionState::Idle    => C_DIM,
+        SessionState::Paused => C_AMBER,
+        SessionState::Idle => C_DIM,
     }
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max { s } else { &s[..max] }
+    if s.len() <= max {
+        s
+    } else {
+        &s[..max]
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -978,9 +1075,9 @@ fn truncate(s: &str, max: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::DiscoveredDevice;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
-    use crate::types::DiscoveredDevice;
 
     fn session_state(session: SessionState, connected: bool) -> AppState {
         let mut s = AppState::new("WalkingPad".into());

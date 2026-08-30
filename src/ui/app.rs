@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::ble::protocol::{BELT_RUNNING, BELT_STOPPED};
-use crate::session::{SessionState, SessionEvent};
 use crate::session::stats::Stats;
+use crate::session::{SessionEvent, SessionState};
 use crate::types::DiscoveredDevice;
 
 /// Number of render ticks (×100 ms) the pump pulse lasts.
@@ -179,13 +179,17 @@ impl AppState {
 
     /// Move the scan cursor up (towards index 0), clamped.
     pub fn scan_cursor_up(&mut self) {
-        if self.scan_results.is_empty() { return; }
+        if self.scan_results.is_empty() {
+            return;
+        }
         self.scan_cursor = self.scan_cursor.saturating_sub(1);
     }
 
     /// Move the scan cursor down (towards last index), clamped.
     pub fn scan_cursor_down(&mut self) {
-        if self.scan_results.is_empty() { return; }
+        if self.scan_results.is_empty() {
+            return;
+        }
         let max = self.scan_results.len().saturating_sub(1);
         if self.scan_cursor < max {
             self.scan_cursor += 1;
@@ -276,9 +280,9 @@ impl AppState {
 
     pub fn status_label(&self) -> &'static str {
         match self.session {
-            SessionState::Idle    => "IDLE",
+            SessionState::Idle => "IDLE",
             SessionState::Running => "RUNNING",
-            SessionState::Paused  => "PAUSED",
+            SessionState::Paused => "PAUSED",
         }
     }
 
@@ -298,7 +302,11 @@ mod tests {
     use crate::ble::protocol::{BELT_RUNNING, BELT_STOPPED};
 
     fn dev(name: &str, addr: &str, rssi: Option<i16>) -> DiscoveredDevice {
-        DiscoveredDevice { name: name.into(), addr: addr.into(), rssi }
+        DiscoveredDevice {
+            name: name.into(),
+            addr: addr.into(),
+            rssi,
+        }
     }
 
     // ── Iter 4a: cursor bounds ────────────────────────────────────────────
@@ -338,7 +346,11 @@ mod tests {
     #[test]
     fn test_scan_cursor_moves_up_and_down() {
         let mut s = AppState::new("WalkingPad".into());
-        s.scan_results = vec![dev("A", "AA:01", None), dev("B", "AA:02", None), dev("C", "AA:03", None)];
+        s.scan_results = vec![
+            dev("A", "AA:01", None),
+            dev("B", "AA:02", None),
+            dev("C", "AA:03", None),
+        ];
         s.scan_cursor_down();
         assert_eq!(s.scan_cursor, 1);
         s.scan_cursor_down();
@@ -415,7 +427,10 @@ mod tests {
         s.session = SessionState::Paused;
         s.session_start_at = Some(started_at);
 
-        s.sync_session_to_belt(BELT_RUNNING, SystemTime::UNIX_EPOCH + Duration::from_secs(10));
+        s.sync_session_to_belt(
+            BELT_RUNNING,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(10),
+        );
 
         assert_eq!(s.session, SessionState::Running);
         assert_eq!(s.session_start_at, Some(started_at));
@@ -425,13 +440,19 @@ mod tests {
 
     #[test]
     fn test_speed_input_parse_raw_two_digits() {
-        let si = SpeedInput { visible: true, digits: "35".into() };
+        let si = SpeedInput {
+            visible: true,
+            digits: "35".into(),
+        };
         assert_eq!(si.parse_raw(), Some(35));
     }
 
     #[test]
     fn test_speed_input_parse_raw_empty_is_none() {
-        let si = SpeedInput { visible: true, digits: String::new() };
+        let si = SpeedInput {
+            visible: true,
+            digits: String::new(),
+        };
         assert_eq!(si.parse_raw(), None);
     }
 

@@ -20,9 +20,9 @@ impl Log for FileLogger {
             let _ = writeln!(
                 w,
                 "[{level:<5} {target}] {args}",
-                level  = record.level(),
+                level = record.level(),
                 target = record.target(),
-                args   = record.args(),
+                args = record.args(),
             );
             let _ = w.flush();
         }

@@ -66,10 +66,10 @@ pub fn cmd_set_mode(mode: u8) -> [u8; 7] {
 /// Decoded status from a treadmill notification packet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusPacket {
-    pub belt_state: u8,      // 0x01=running, 0x05=stopped
-    pub speed_raw: u8,       // raw; divide by 10 for km/h
-    pub time_secs: u32,      // cumulative session seconds on device
-    pub dist_raw: u32,       // raw; divide by 100 for km
+    pub belt_state: u8, // 0x01=running, 0x05=stopped
+    pub speed_raw: u8,  // raw; divide by 10 for km/h
+    pub time_secs: u32, // cumulative session seconds on device
+    pub dist_raw: u32,  // raw; divide by 100 for km
     pub steps: u32,
     /// Device-reported total kcal; `None` when not present in the packet.
     pub kcal: Option<u32>,
@@ -104,8 +104,8 @@ pub fn parse_machine_status(bytes: &[u8]) -> MachineStatus {
             MachineStatus::SpeedChanged(speed)
         }
         Some(0xFF) => MachineStatus::ControlPermissionLost,
-        Some(&b)   => MachineStatus::Unknown(b),
-        None       => MachineStatus::Unknown(0),
+        Some(&b) => MachineStatus::Unknown(b),
+        None => MachineStatus::Unknown(0),
     }
 }
 
@@ -180,13 +180,21 @@ pub fn parse_ftms_treadmill_data(bytes: &[u8]) -> crate::error::Result<StatusPac
     let dist_raw = dist_meters / 10;
 
     // Bit 3 → Inclination + Ramp Angle (4 bytes) — skip
-    if flags & 0x0008 != 0 { off += 4; }
+    if flags & 0x0008 != 0 {
+        off += 4;
+    }
     // Bit 4 → Elevation Gain (4 bytes) — skip
-    if flags & 0x0010 != 0 { off += 4; }
+    if flags & 0x0010 != 0 {
+        off += 4;
+    }
     // Bit 5 → Instantaneous Pace (uint16, 2 bytes) — skip
-    if flags & 0x0020 != 0 { off += 2; }
+    if flags & 0x0020 != 0 {
+        off += 2;
+    }
     // Bit 6 → Average Pace (uint16, 2 bytes) — skip
-    if flags & 0x0040 != 0 { off += 2; }
+    if flags & 0x0040 != 0 {
+        off += 2;
+    }
     // Bit 7 → Expended Energy: Total kcal (uint16) + Per-Hour (uint16) + Per-Min (uint8) = 5 bytes
     let kcal: Option<u32> = if flags & 0x0080 != 0 {
         if off + 5 > bytes.len() {
@@ -201,9 +209,13 @@ pub fn parse_ftms_treadmill_data(bytes: &[u8]) -> crate::error::Result<StatusPac
         None
     };
     // Bit 8 → Heart Rate (uint8, 1 byte) — skip
-    if flags & 0x0100 != 0 { off += 1; }
+    if flags & 0x0100 != 0 {
+        off += 1;
+    }
     // Bit 9 → Metabolic Equivalent (uint8, 1 byte) — skip
-    if flags & 0x0200 != 0 { off += 1; }
+    if flags & 0x0200 != 0 {
+        off += 1;
+    }
 
     // Bit 10 → Elapsed Time (uint16 LE, seconds)
     let time_secs: u32 = if flags & 0x0400 != 0 {
@@ -220,9 +232,13 @@ pub fn parse_ftms_treadmill_data(bytes: &[u8]) -> crate::error::Result<StatusPac
     };
 
     // Bit 11 → Remaining Time (uint16, 2 bytes) — skip
-    if flags & 0x0800 != 0 { off += 2; }
+    if flags & 0x0800 != 0 {
+        off += 2;
+    }
     // Bit 12 → Force on Belt + Power Output (sint16 + uint16 = 4 bytes) — skip
-    if flags & 0x1000 != 0 { off += 4; }
+    if flags & 0x1000 != 0 {
+        off += 4;
+    }
     // Bit 13 → KingSmith proprietary extension: cumulative step count (uint24 LE, 3 bytes).
     // Not in the FTMS standard; this device sets bit 13 and appends steps after the standard fields.
     let steps: u32 = if flags & 0x2000 != 0 && off + 3 <= bytes.len() {
@@ -231,9 +247,20 @@ pub fn parse_ftms_treadmill_data(bytes: &[u8]) -> crate::error::Result<StatusPac
         0
     };
 
-    let belt_state = if speed_raw > 0 { BELT_RUNNING } else { BELT_STOPPED };
+    let belt_state = if speed_raw > 0 {
+        BELT_RUNNING
+    } else {
+        BELT_STOPPED
+    };
 
-    Ok(StatusPacket { belt_state, speed_raw, time_secs, dist_raw, steps, kcal })
+    Ok(StatusPacket {
+        belt_state,
+        speed_raw,
+        time_secs,
+        dist_raw,
+        steps,
+        kcal,
+    })
 }
 
 /// Parse a 20-byte status notification (legacy proprietary protocol).
@@ -259,7 +286,14 @@ pub fn parse_status(bytes: &[u8]) -> crate::error::Result<StatusPacket> {
     let dist_raw = decode3(bytes[8], bytes[9], bytes[10]);
     let steps = decode3(bytes[11], bytes[12], bytes[13]);
 
-    Ok(StatusPacket { belt_state, speed_raw, time_secs, dist_raw, steps, kcal: None })
+    Ok(StatusPacket {
+        belt_state,
+        speed_raw,
+        time_secs,
+        dist_raw,
+        steps,
+        kcal: None,
+    })
 }
 
 #[inline]
@@ -421,7 +455,7 @@ mod tests {
         b.extend_from_slice(&flags.to_le_bytes());
         b.extend_from_slice(&200u16.to_le_bytes()); // speed = 200 (2.0 km/h)
         b.extend_from_slice(&100u16.to_le_bytes()); // avg speed (skipped, 2 B)
-        b.extend_from_slice(&[0xE8, 0x03, 0x00]);   // distance = 1000 m (3 B)
+        b.extend_from_slice(&[0xE8, 0x03, 0x00]); // distance = 1000 m (3 B)
         b.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // inclination + ramp (skipped, 4 B)
         b.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00]); // expended energy (skipped, 5 B)
         b.extend_from_slice(&60u16.to_le_bytes()); // elapsed = 60 s (2 B)
@@ -438,15 +472,15 @@ mod tests {
         // flags=0x2484: speed(bit0=0), distance(bit2), energy(bit7), elapsed(bit10), steps(bit13)
         let raw = [
             0x84u8, 0x24, // flags = 0x2484
-            0xF4, 0x01,   // speed = 500 (5.0 km/h)
+            0xF4, 0x01, // speed = 500 (5.0 km/h)
             0xD2, 0x05, 0x00, // distance = 1490 m → dist_raw = 149
             0x68, 0x00, 0x00, 0x00, 0x00, // energy: total=104 kcal, per-hr=0, per-min=0
-            0x3A, 0x05,   // elapsed = 0x053A = 1338 s
+            0x3A, 0x05, // elapsed = 0x053A = 1338 s
             0x06, 0x09, 0x00, // steps = 0x000906 = 2310
         ];
         let st = parse_ftms_treadmill_data(&raw).unwrap();
-        assert_eq!(st.speed_raw, 50);           // 500/10
-        assert_eq!(st.dist_raw, 149);           // 1490/10
+        assert_eq!(st.speed_raw, 50); // 500/10
+        assert_eq!(st.dist_raw, 149); // 1490/10
         assert_eq!(st.time_secs, 1338);
         assert_eq!(st.kcal, Some(104));
         assert_eq!(st.steps, 2310);
@@ -461,12 +495,12 @@ mod tests {
         let mut b = Vec::new();
         b.extend_from_slice(&flags.to_le_bytes());
         b.extend_from_slice(&300u16.to_le_bytes()); // speed = 3.0 km/h
-        b.extend_from_slice(&[0x64, 0x00, 0x00]);   // distance = 100 m
-        // Expended Energy: total=42 kcal, per-hour=180, per-min=3
-        b.extend_from_slice(&42u16.to_le_bytes());   // total kcal
-        b.extend_from_slice(&180u16.to_le_bytes());  // per hour (ignored)
-        b.push(3);                                    // per minute (ignored)
-        b.extend_from_slice(&120u16.to_le_bytes());  // elapsed = 120 s
+        b.extend_from_slice(&[0x64, 0x00, 0x00]); // distance = 100 m
+                                                  // Expended Energy: total=42 kcal, per-hour=180, per-min=3
+        b.extend_from_slice(&42u16.to_le_bytes()); // total kcal
+        b.extend_from_slice(&180u16.to_le_bytes()); // per hour (ignored)
+        b.push(3); // per minute (ignored)
+        b.extend_from_slice(&120u16.to_le_bytes()); // elapsed = 120 s
         let st = parse_ftms_treadmill_data(&b).unwrap();
         assert_eq!(st.kcal, Some(42));
         assert_eq!(st.time_secs, 120);
@@ -535,7 +569,7 @@ mod tests {
         let bytes = make_status_fixture(BELT_RUNNING, 60, 7200, 1000, 10000);
         let st = parse_status(&bytes).unwrap();
         assert_eq!(st.time_secs, 7200); // 2 hours
-        assert_eq!(st.dist_raw, 1000);  // 10.00 km
+        assert_eq!(st.dist_raw, 1000); // 10.00 km
         assert_eq!(st.steps, 10000);
     }
 }

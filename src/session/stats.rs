@@ -84,7 +84,7 @@ mod tests {
     fn test_device_counter_reset_does_not_subtract() {
         let mut s = Stats::new();
         s.update(500, 1000, 30); // 5.00 km so far
-        s.update(10, 20, 30);    // device reset → delta treated as 0
+        s.update(10, 20, 30); // device reset → delta treated as 0
         assert!((s.total_distance_km - 5.00).abs() < 0.001);
         assert_eq!(s.total_steps, 1000);
     }

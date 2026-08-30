@@ -266,6 +266,21 @@ The tape file (`padctl.tape`) and the simulation script (`demo/padctl-demo.sh`) 
 
 ---
 
+## Telemetry
+
+padctl sends anonymous usage telemetry, on by default, using the shared
+DataZoo schema. **It never transmits device names, BLE addresses, Google
+tokens, or your walking data** — enforced by an allow-list of permitted
+properties and values, with a test that feeds a real device model, a MAC
+address, an OAuth token and an email through the capture path and asserts none
+appear.
+
+Turn it off with `--no-telemetry`, `PADCTL_NO_TELEMETRY=1`,
+`DATAZOO_DISABLE_TELEMETRY=1`, or `DO_NOT_TRACK=1`. Full detail in
+[TELEMETRY.md](TELEMETRY.md).
+
+---
+
 ## License
 
 MIT

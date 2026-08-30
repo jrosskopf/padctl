@@ -26,18 +26,16 @@ impl SessionState {
     /// Apply an event and return the next state.
     /// Returns `Err` for invalid transitions.
     pub fn transition(self, event: SessionEvent) -> Result<SessionState> {
-        use SessionState::*;
         use SessionEvent::*;
+        use SessionState::*;
 
         match (self, event) {
-            (Idle, Start)        => Ok(Running),
-            (Running, Pause)     => Ok(Paused),
-            (Running, Stop)      => Ok(Idle),
-            (Paused, Resume)     => Ok(Running),
-            (Paused, Stop)       => Ok(Idle),
-            (state, ev) => Err(AppError::InvalidTransition(format!(
-                "{state:?} + {ev:?}"
-            ))),
+            (Idle, Start) => Ok(Running),
+            (Running, Pause) => Ok(Paused),
+            (Running, Stop) => Ok(Idle),
+            (Paused, Resume) => Ok(Running),
+            (Paused, Stop) => Ok(Idle),
+            (state, ev) => Err(AppError::InvalidTransition(format!("{state:?} + {ev:?}"))),
         }
     }
 }
@@ -47,8 +45,8 @@ impl SessionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use SessionState::*;
     use SessionEvent::*;
+    use SessionState::*;
 
     #[test]
     fn test_idle_start_becomes_running() {

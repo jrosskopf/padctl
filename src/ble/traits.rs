@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use async_trait::async_trait;
-use crate::error::Result;
 use crate::ble::protocol::StatusPacket;
+use crate::error::Result;
+use async_trait::async_trait;
 
 /// Abstraction over the BLE hardware layer.
 /// Implemented by `BleDriver` (real) and `MockWalkingPadBle` (tests).

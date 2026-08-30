@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use btleplug::api::{
-    Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter, ValueNotification,
-    WriteType,
+    Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter, ValueNotification, WriteType,
 };
 use btleplug::platform::{Manager, Peripheral};
 use futures::{Stream, StreamExt};
@@ -20,7 +19,7 @@ use crate::types::{BleEvent, DiscoveredDevice};
 // KS-HD-Z1D implements the standard Bluetooth FTMS (Fitness Machine Service).
 // Treadmill Data (notify) and Control Point (write + indicate).
 const NOTIFY_UUID: &str = "00002acd-0000-1000-8000-00805f9b34fb"; // Treadmill Data
-const WRITE_UUID:  &str = "00002ad9-0000-1000-8000-00805f9b34fb"; // Control Point
+const WRITE_UUID: &str = "00002ad9-0000-1000-8000-00805f9b34fb"; // Control Point
 
 /// FTMS primary service UUID (0x1826).
 ///
@@ -52,7 +51,10 @@ pub const FITNESS_MACHINE_STATUS_UUID: &str = "00002ada-0000-1000-8000-00805f9b3
 ///
 /// Stops when `stop_rx` receives `true`, then calls `central.stop_scan()` cleanly.
 /// Should be spawned as a background task.
-pub async fn scan_devices(tx: mpsc::Sender<BleEvent>, mut stop_rx: watch::Receiver<bool>) -> Result<()> {
+pub async fn scan_devices(
+    tx: mpsc::Sender<BleEvent>,
+    mut stop_rx: watch::Receiver<bool>,
+) -> Result<()> {
     debug!("scan_devices: starting");
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
@@ -63,9 +65,11 @@ pub async fn scan_devices(tx: mpsc::Sender<BleEvent>, mut stop_rx: watch::Receiv
     debug!("scan_devices: adapter acquired, starting scan");
 
     let mut events = central.events().await?;
-    central.start_scan(ScanFilter {
-        services: vec![Uuid::parse_str(FTMS_SERVICE_UUID).unwrap()],
-    }).await?;
+    central
+        .start_scan(ScanFilter {
+            services: vec![Uuid::parse_str(FTMS_SERVICE_UUID).unwrap()],
+        })
+        .await?;
     debug!("scan_devices: scan started");
 
     loop {
@@ -128,11 +132,17 @@ impl BleDriver {
     /// triggers a status response on 0xfff1 containing step count.
     /// No-op (silently) if 0xfff2 was not found during GATT discovery.
     pub async fn poll_proprietary_stats(&self) -> Result<()> {
-        let Some(ref pwc) = self.prop_write_char else { return Ok(()); };
+        let Some(ref pwc) = self.prop_write_char else {
+            return Ok(());
+        };
         let p = self.peripheral.as_ref().ok_or(AppError::NotConnected)?;
         debug!("poll_proprietary_stats: writing ask_stats to 0xfff2");
-        p.write(pwc, &crate::ble::protocol::cmd_ask_stats(), WriteType::WithoutResponse)
-            .await?;
+        p.write(
+            pwc,
+            &crate::ble::protocol::cmd_ask_stats(),
+            WriteType::WithoutResponse,
+        )
+        .await?;
         Ok(())
     }
 
@@ -143,7 +153,10 @@ impl BleDriver {
     /// Does NOT disconnect on failure — the caller is responsible.
     async fn setup_gatt(
         peripheral: &Peripheral,
-    ) -> Result<(btleplug::api::Characteristic, Option<btleplug::api::Characteristic>)> {
+    ) -> Result<(
+        btleplug::api::Characteristic,
+        Option<btleplug::api::Characteristic>,
+    )> {
         // Give the device a moment to settle before GATT discovery.
         debug!("setup_gatt: sleeping 400 ms for device settle…");
         time::sleep(Duration::from_millis(400)).await;
@@ -157,7 +170,8 @@ impl BleDriver {
                 error!("setup_gatt: discover_services timed out after 10 s");
                 AppError::Protocol(
                     "GATT service discovery timed out (10 s). \
-                     Try power-cycling the WalkingPad.".into(),
+                     Try power-cycling the WalkingPad."
+                        .into(),
                 )
             })??;
         debug!("setup_gatt: discover_services completed");
@@ -165,7 +179,10 @@ impl BleDriver {
         let chars = peripheral.characteristics();
         debug!("setup_gatt: {} characteristics found:", chars.len());
         for c in &chars {
-            debug!("  service={} char={} props={:?}", c.service_uuid, c.uuid, c.properties);
+            debug!(
+                "  service={} char={} props={:?}",
+                c.service_uuid, c.uuid, c.properties
+            );
         }
 
         if chars.is_empty() {
@@ -177,10 +194,18 @@ impl BleDriver {
 
         // Unique services discovered
         let mut seen_services = std::collections::BTreeSet::new();
-        for c in &chars { seen_services.insert(c.service_uuid); }
-        debug!("setup_gatt: distinct services: {:?}", seen_services.iter().map(|u| u.to_string()).collect::<Vec<_>>());
+        for c in &chars {
+            seen_services.insert(c.service_uuid);
+        }
+        debug!(
+            "setup_gatt: distinct services: {:?}",
+            seen_services
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>()
+        );
 
-        let write_uuid  = Uuid::parse_str(WRITE_UUID).unwrap();
+        let write_uuid = Uuid::parse_str(WRITE_UUID).unwrap();
         let notify_uuid = Uuid::parse_str(NOTIFY_UUID).unwrap();
         debug!("setup_gatt: looking for write UUID={WRITE_UUID} notify UUID={NOTIFY_UUID}");
 
@@ -189,18 +214,24 @@ impl BleDriver {
             .find(|c| c.uuid == write_uuid)
             .cloned()
             .ok_or_else(|| {
-                let details: Vec<_> = chars.iter()
+                let details: Vec<_> = chars
+                    .iter()
                     .map(|c| format!("svc={} char={}", c.service_uuid, c.uuid))
                     .collect();
                 error!("setup_gatt: write characteristic {WRITE_UUID} not found.");
-                for d in &details { error!("  {d}"); }
+                for d in &details {
+                    error!("  {d}");
+                }
                 AppError::Protocol(format!(
                     "Write characteristic {} not found. Services/chars: {}",
                     WRITE_UUID,
                     details.join(" | ")
                 ))
             })?;
-        debug!("setup_gatt: write characteristic found: {}", write_char.uuid);
+        debug!(
+            "setup_gatt: write characteristic found: {}",
+            write_char.uuid
+        );
 
         // Subscribe to Treadmill Data notifications (0x2ACD)
         if let Some(nc) = chars.iter().find(|c| c.uuid == notify_uuid) {
@@ -214,20 +245,28 @@ impl BleDriver {
         // Subscribe to FTMS Fitness Machine Status (0x2ADA) for device-initiated events (non-fatal).
         let fms_uuid = Uuid::parse_str(FITNESS_MACHINE_STATUS_UUID).unwrap();
         if let Some(fc) = chars.iter().find(|c| c.uuid == fms_uuid) {
-            debug!("setup_gatt: subscribing to fitness machine status char {}", fc.uuid);
+            debug!(
+                "setup_gatt: subscribing to fitness machine status char {}",
+                fc.uuid
+            );
             if let Err(e) = peripheral.subscribe(fc).await {
                 warn!("setup_gatt: fitness machine status subscribe failed (non-fatal): {e}");
             } else {
                 debug!("setup_gatt: subscribed to fitness machine status");
             }
         } else {
-            debug!("setup_gatt: fitness machine status char {FITNESS_MACHINE_STATUS_UUID} not found");
+            debug!(
+                "setup_gatt: fitness machine status char {FITNESS_MACHINE_STATUS_UUID} not found"
+            );
         }
 
         // Subscribe to proprietary 0xfff1 notify char for step count (non-fatal).
         let prop_uuid = Uuid::parse_str(PROPRIETARY_NOTIFY_UUID).unwrap();
         if let Some(pc) = chars.iter().find(|c| c.uuid == prop_uuid) {
-            debug!("setup_gatt: subscribing to proprietary char {} for step count", pc.uuid);
+            debug!(
+                "setup_gatt: subscribing to proprietary char {} for step count",
+                pc.uuid
+            );
             if let Err(e) = peripheral.subscribe(pc).await {
                 warn!("setup_gatt: proprietary notify subscribe failed (non-fatal): {e}");
             } else {
@@ -239,7 +278,10 @@ impl BleDriver {
 
         // Subscribe to Control Point indications (0x2AD9) so FTMS responses arrive
         // through the notifications stream. This must happen before RequestControl.
-        debug!("setup_gatt: subscribing to control point char {} for FTMS indications", write_char.uuid);
+        debug!(
+            "setup_gatt: subscribing to control point char {} for FTMS indications",
+            write_char.uuid
+        );
         if let Err(e) = peripheral.subscribe(&write_char).await {
             warn!("setup_gatt: control point subscribe failed (non-fatal): {e}");
         } else {
@@ -252,7 +294,9 @@ impl BleDriver {
         if prop_write_char.is_some() {
             debug!("setup_gatt: proprietary write char 0xfff2 found — step polling enabled");
         } else {
-            debug!("setup_gatt: proprietary write char 0xfff2 not found — steps may be unavailable");
+            debug!(
+                "setup_gatt: proprietary write char 0xfff2 not found — steps may be unavailable"
+            );
         }
 
         // FTMS Request Control — must be sent before any command.
@@ -306,13 +350,14 @@ impl WalkingPadBle for BleDriver {
         debug!("connect: adapter selected");
 
         let mut events = central.events().await?;
-        central.start_scan(ScanFilter {
-        services: vec![Uuid::parse_str(FTMS_SERVICE_UUID).unwrap()],
-    }).await?;
+        central
+            .start_scan(ScanFilter {
+                services: vec![Uuid::parse_str(FTMS_SERVICE_UUID).unwrap()],
+            })
+            .await?;
         debug!("connect: BLE scan started, waiting for device…");
 
-        let scan_timeout =
-            time::sleep(Duration::from_secs(self.scan_timeout_secs));
+        let scan_timeout = time::sleep(Duration::from_secs(self.scan_timeout_secs));
         tokio::pin!(scan_timeout);
 
         // Find the device by addr (preferred) or name, using the event stream
@@ -393,9 +438,7 @@ impl WalkingPadBle for BleDriver {
         debug!("write_command: {:02X?}", pkt);
         let peripheral = self.peripheral.as_ref().ok_or(AppError::NotConnected)?;
         let wc = self.write_char.as_ref().ok_or(AppError::NotConnected)?;
-        peripheral
-            .write(wc, pkt, WriteType::WithResponse)
-            .await?;
+        peripheral.write(wc, pkt, WriteType::WithResponse).await?;
         Ok(())
     }
 
