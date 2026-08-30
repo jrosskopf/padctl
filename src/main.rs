@@ -38,6 +38,7 @@ use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(
+    version,
     name = "padctl",
     about = "Cypherpunk TUI for Kingfisher / KingSmith WalkingPad"
 )]

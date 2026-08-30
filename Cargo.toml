@@ -1,6 +1,6 @@
 [package]
 name = "padctl"
-version = "0.1.2"
+version = "2026.8.30"
 edition = "2021"
 description = "Cypherpunk TUI controller for Kingfisher Z1 / KingSmith WalkingPad via BLE"
 license = "MIT"
