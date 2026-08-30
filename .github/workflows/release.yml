@@ -57,6 +57,8 @@ jobs:
             --description "Cypherpunk TUI controller for KingSmith WalkingPad via BLE" \
             --author "Joachim Rosskopf" \
             --license "MIT" \
+            --url "https://github.com/jrosskopf/padctl" \
+            --readme README.md \
             --entry-point padctl \
             --output-dir dist
 

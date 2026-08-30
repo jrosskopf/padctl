@@ -2,7 +2,7 @@
 
 > Terminal controller for KingSmith WalkingPad — BLE, cypherpunk green on black.
 
-![padctl demo](assets/demo.gif)
+![padctl demo](https://raw.githubusercontent.com/jrosskopf/padctl/main/assets/demo.gif)
 
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey)](#install)
@@ -277,7 +277,7 @@ appear.
 
 Turn it off with `--no-telemetry`, `PADCTL_NO_TELEMETRY=1`,
 `DATAZOO_DISABLE_TELEMETRY=1`, or `DO_NOT_TRACK=1`. Full detail in
-[TELEMETRY.md](TELEMETRY.md).
+[TELEMETRY.md](https://github.com/jrosskopf/padctl/blob/main/TELEMETRY.md).
 
 ---
 
