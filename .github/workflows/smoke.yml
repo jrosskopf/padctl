@@ -24,13 +24,18 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    # A retired or unavailable runner label queues indefinitely rather than
+    # failing, which reads as a slow run and never resolves. Fail loudly.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             label: linux-x86_64
-          - os: macos-13
+          # macos-13 was retired by GitHub; a job targeting it queues forever
+          # rather than failing, which looks like a slow run and never ends.
+          - os: macos-15-intel
             label: macos-x86_64
           - os: macos-latest
             label: macos-arm64
