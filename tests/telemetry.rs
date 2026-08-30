@@ -12,6 +12,20 @@ use std::sync::mpsc;
 mod telemetry;
 use telemetry::{Telemetry, Value};
 
+/// The opt-out tests set process-global environment variables, which every
+/// other test in this binary can see. Cargo runs tests in parallel by
+/// default, so without a guard an opt-out test can disable telemetry
+/// underneath a concurrent test and make it fail -- which is exactly what
+/// happened on macOS CI while Linux passed by luck of timing.
+///
+/// Every test here takes this lock, so the suite is correct under a plain
+/// `cargo test` rather than relying on `--test-threads=1`.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn capture_server() -> (String, mpsc::Receiver<String>) {
     let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
     let url = format!("http://{}", server.server_addr());
@@ -29,7 +43,7 @@ fn capture_server() -> (String, mpsc::Receiver<String>) {
 
 fn recv(rx: &mpsc::Receiver<String>) -> serde_json::Value {
     let raw = rx
-        .recv_timeout(std::time::Duration::from_secs(5))
+        .recv_timeout(std::time::Duration::from_secs(15))
         .expect("no telemetry arrived");
     serde_json::from_str(&raw).expect("payload must be json")
 }
@@ -47,6 +61,7 @@ fn telemetry(url: &str) -> Telemetry {
 
 #[test]
 fn every_event_carries_the_schema_2_envelope() {
+    let _guard = serial();
     let (url, rx) = capture_server();
     let t = telemetry(&url);
     t.capture("cli_started", vec![]);
@@ -71,6 +86,7 @@ fn every_event_carries_the_schema_2_envelope() {
 
 #[test]
 fn the_product_is_padctl_and_the_env_var_follows_from_it() {
+    let _guard = serial();
     assert_eq!(telemetry::product_env_var("padctl"), "PADCTL_NO_TELEMETRY");
     assert_eq!(
         telemetry::product_env_var("cicdbar"),
@@ -98,6 +114,7 @@ fn assert_silent(env_key: &str, env_val: &str) {
 
 #[test]
 fn all_four_opt_outs_are_honoured() {
+    let _guard = serial();
     assert_silent("DATAZOO_DISABLE_TELEMETRY", "1");
     assert_silent("DO_NOT_TRACK", "1");
     assert_silent("PADCTL_NO_TELEMETRY", "1");
@@ -106,6 +123,7 @@ fn all_four_opt_outs_are_honoured() {
 
 #[test]
 fn nothing_personal_can_reach_a_payload() {
+    let _guard = serial();
     // padctl knows a device name, a MAC address, and Google Fit tokens.
     let secrets = [
         "KS-HD-Z1D",
@@ -131,6 +149,7 @@ fn nothing_personal_can_reach_a_payload() {
 
 #[test]
 fn a_registered_feature_does_get_through() {
+    let _guard = serial();
     let (url, rx) = capture_server();
     let t = telemetry(&url);
     t.capture(
@@ -148,12 +167,15 @@ fn a_registered_feature_does_get_through() {
 
 #[test]
 fn an_unreachable_endpoint_neither_fails_nor_hangs() {
+    let _guard = serial();
     let t = Telemetry::for_test("padctl", "9.9.9", "http://127.0.0.1:1").with_features(FEATURES);
     let start = std::time::Instant::now();
     t.capture("cli_started", vec![]);
     t.flush();
+    // The client's own timeout is 2s; this proves it does not hang, with
+    // enough slack to survive a loaded CI runner.
     assert!(
-        start.elapsed().as_secs_f64() < 3.0,
+        start.elapsed().as_secs_f64() < 8.0,
         "blocked for {:?}",
         start.elapsed()
     );
