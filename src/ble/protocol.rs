@@ -92,8 +92,10 @@ pub enum MachineStatus {
 pub fn parse_machine_status(bytes: &[u8]) -> MachineStatus {
     match bytes.first() {
         Some(0x01) => MachineStatus::Reset,
-        Some(0x02) => MachineStatus::StoppedBySafetyKey,
-        Some(0x03) => MachineStatus::StoppedByUser,
+        // FTMS spec: 0x02 = Stopped or Paused by the User (param 0x01 stop / 0x02 pause),
+        //            0x03 = Stopped by Safety Key.
+        Some(0x02) => MachineStatus::StoppedByUser,
+        Some(0x03) => MachineStatus::StoppedBySafetyKey,
         Some(0x04) => MachineStatus::StartedOrResumed,
         Some(0x05) => {
             let speed = if bytes.len() >= 3 {
@@ -504,6 +506,34 @@ mod tests {
         let st = parse_ftms_treadmill_data(&b).unwrap();
         assert_eq!(st.kcal, Some(42));
         assert_eq!(st.time_secs, 120);
+    }
+
+    // ── FTMS Fitness Machine Status (0x2ADA) ───────────────────────────────
+
+    #[test]
+    fn test_machine_status_codes_follow_ftms_spec() {
+        // Pause from the remote / app (captured on a KingSmith R3, KS-AP-RQ3)
+        assert_eq!(
+            parse_machine_status(&[0x02, 0x02]),
+            MachineStatus::StoppedByUser
+        );
+        // Session ended
+        assert_eq!(
+            parse_machine_status(&[0x02, 0x01]),
+            MachineStatus::StoppedByUser
+        );
+        assert_eq!(
+            parse_machine_status(&[0x03]),
+            MachineStatus::StoppedBySafetyKey
+        );
+        assert_eq!(
+            parse_machine_status(&[0x04]),
+            MachineStatus::StartedOrResumed
+        );
+        assert_eq!(
+            parse_machine_status(&[0x05, 0x58, 0x02]),
+            MachineStatus::SpeedChanged(600)
+        );
     }
 
     // ── Iter 3: status parsing ───────────────────────────────────────────

@@ -607,7 +607,7 @@ impl RuntimeController {
             }
             (SessionState::Running, KeyCode::Char('p')) => {
                 self.state.resume_speed_raw = (self.state.stats.current_speed_kmh * 10.0) as u8;
-                let _ = self.cmd_tx.send(Cmd::StopBelt).await;
+                let _ = self.cmd_tx.send(Cmd::PauseBelt).await;
                 self.state.push_log(">> Pausing belt…");
             }
             (SessionState::Running, KeyCode::Up | KeyCode::Char('k')) => {
@@ -941,10 +941,13 @@ async fn ble_session_task(
                 info!("ble_session_task: cmd StartBelt → FTMS Start/Resume [0x07]");
                 driver.write_command(&[0x07]).await
             }
-            Cmd::StopBelt => {
-                // FTMS: Stop (0x08, param 0x01 = stop)
-                info!("ble_session_task: cmd StopBelt → FTMS Stop [0x08 0x01]");
-                driver.write_command(&[0x08, 0x01]).await
+            Cmd::PauseBelt => {
+                // FTMS: Stop or Pause (0x08) with param 0x02 = pause. Some firmware
+                // (e.g. KingSmith R3, KS-AP-RQ3) rejects param 0x01 (stop) with
+                // OPERATION_FAILED while the belt is moving and keeps running; pause
+                // is accepted everywhere and matches padctl's pause/resume flow.
+                info!("ble_session_task: cmd PauseBelt → FTMS Pause [0x08 0x02]");
+                driver.write_command(&[0x08, 0x02]).await
             }
             Cmd::SetSpeed(raw) => {
                 // raw is in 0.1 km/h units (e.g. 30 = 3.0 km/h)
