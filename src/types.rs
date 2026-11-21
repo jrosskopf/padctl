@@ -29,7 +29,8 @@ pub enum BleEvent {
 #[derive(Debug)]
 pub enum Cmd {
     StartBelt,
-    StopBelt,
+    /// FTMS Stop-or-Pause with the PAUSE parameter: belt ramps down, session counters are kept.
+    PauseBelt,
     SetSpeed(u8),
     SetMode(u8),
     Quit,
