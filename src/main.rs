@@ -945,7 +945,9 @@ async fn ble_session_task(
                 // FTMS: Stop or Pause (0x08) with param 0x02 = pause. Some firmware
                 // (e.g. KingSmith R3, KS-AP-RQ3) rejects param 0x01 (stop) with
                 // OPERATION_FAILED while the belt is moving and keeps running; pause
-                // is accepted everywhere and matches padctl's pause/resume flow.
+                // is accepted while moving and matches padctl's pause/resume flow.
+                // Note: the R3 also refuses pause (`80 08 04 02`) during the 3-2-1
+                // countdown after a start, then starts the belt anyway.
                 info!("ble_session_task: cmd PauseBelt → FTMS Pause [0x08 0x02]");
                 driver.write_command(&[0x08, 0x02]).await
             }
